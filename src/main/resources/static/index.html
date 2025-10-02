@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BANCO DIGITAL</title>
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+
+    <style>
+        :root {
+            --primary-color: #0a0852;
+            --secondary-color: #0b4d98;
+            --background-color: #e9d8a6;
+            --card-background: #ffffff;
+            --text-color: #333;
+            --light-gray: #f8f9fa;
+        }
+
+        body {
+            background-color: var(--light-gray);
+            font-family: 'Poppins', sans-serif;
+        }
+
+        .navbar {
+            background-color: var(--primary-color);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .navbar-brand img {
+            height: 40px;
+        }
+
+        .container-fluid {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+
+        .account-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            background: linear-gradient(135deg, var(--card-background) 0%, #f0f4f7 100%);
+        }
+
+        .account-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 20px rgba(0,95,115,0.15);
+        }
+
+        .account-card .card-header {
+            background-color: var(--primary-color);
+            color: white;
+            font-weight: 600;
+            border-top-left-radius: 15px;
+            border-top-right-radius: 15px;
+        }
+
+        .account-card .card-body {
+            color: var(--text-color);
+        }
+
+        .account-card .saldo {
+            font-size: 2rem;
+            font-weight: 600;
+            color: var(--secondary-color);
+        }
+
+        .btn-group .btn {
+            margin-right: 5px;
+            border-radius: 20px;
+        }
+
+        .modal-header {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .form-label {
+            font-weight: 600;
+        }
+
+        #notification-area {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1050;
+        }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark">
+    <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center" href="#">
+            Banco Digital - JAVA + SPRINGBOOT
+        </a>
+    </div>
+</nav>
+
+<div class="container-fluid">
+    <div class="card mb-4">
+        <div class="card-header">
+            Criar Nova Conta
+        </div>
+        <div class="card-body">
+            <form class="row g-3" id="form-criar-conta">
+                <div class="col-md-5">
+                    <input type="text" class="form-control" id="input-nome-cliente" placeholder="Nome Completo do Titular" required>
+                </div>
+                <div class="col-md-5">
+                    <input type="text" class="form-control" id="input-cpf-cliente" placeholder="CPF do Titular" required>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-primary w-100">Criar Conta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <h2>Minhas Contas</h2>
+    <div id="account-list" class="row g-4">
+    </div>
+</div>
+
+<div class="modal fade" id="operationModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="operationModalTitle">Operação</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="operationForm">
+                    <input type="hidden" id="operation-account-number">
+                    <div id="operation-fields">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-primary" id="btn-confirm-operation">Confirmar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="extratoModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="extratoModalTitle">Extrato Bancário</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="extratoModalBody">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="notification-area"></div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    // --- INÍCIO DO CÓDIGO JAVASCRIPT ---
+    const API_BASE_URL = 'http://localhost:8080/api';
+
+    const accountList = document.getElementById('account-list');
+    const operationModalEl = document.getElementById('operationModal');
+    const operationModal = new bootstrap.Modal(operationModalEl);
+
+    // Novo modal de Extrato
+    const extratoModalEl = document.getElementById('extratoModal');
+    const extratoModal = new bootstrap.Modal(extratoModalEl);
+
+
+    /**
+     * Exibe uma notificação (toast) de sucesso ou erro.
+     */
+    function showNotification(message, type = 'success') {
+        const toastId = `toast-${Date.now()}`;
+        const toastColorClass = type === 'success' ? 'text-bg-success' : 'text-bg-danger';
+
+        const toastHTML = `
+            <div id="${toastId}" class="toast align-items-center ${toastColorClass} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>
+            </div>`;
+
+        document.getElementById('notification-area').insertAdjacentHTML('beforeend', toastHTML);
+
+        const toastEl = document.getElementById(toastId);
+        const toast = new bootstrap.Toast(toastEl, { delay: 5000 });
+        toast.show();
+        toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
+    }
+
+
+    /**
+     * Busca as contas da API e renderiza os cards na tela, incluindo o botão de Extrato.
+     */
+    async function carregarContas() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/contas`);
+            if (!response.ok) throw new Error('Falha ao buscar contas.');
+
+            const contas = await response.json();
+            accountList.innerHTML = '';
+
+            if (contas.length === 0) {
+                accountList.innerHTML = '<p class="text-center">Nenhuma conta cadastrada. Crie uma acima!</p>';
+                return;
+            }
+
+            contas.forEach(conta => {
+                const cardHTML = `
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card account-card">
+                            <div class="card-header d-flex justify-content-between">
+                                <span>Conta Nº ${conta.numero}</span>
+                                <span>Ag. ${conta.agencia}</span>
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title">${conta.titular.nome}</h5>
+                                <p class="card-text text-muted">${conta.titular.cpf}</p>
+                                <p class="saldo">R$ ${conta.saldo.toFixed(2)}</p>
+                                <div class="btn-group w-100" role="group">
+                                    <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#operationModal" data-operation="deposito" data-account-number="${conta.numero}"><i class="bi bi-arrow-down-circle"></i> Depositar</button>
+                                    <button class="btn btn-sm btn-outline-warning" data-bs-toggle="modal" data-bs-target="#operationModal" data-operation="saque" data-account-number="${conta.numero}"><i class="bi bi-arrow-up-circle"></i> Sacar</button>
+                                    <button class="btn btn-sm btn-outline-info" data-bs-toggle="modal" data-bs-target="#operationModal" data-operation="transferencia" data-account-number="${conta.numero}"><i class="bi bi-send"></i> Transferir</button>
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="emitirExtrato(${conta.numero})"><i class="bi bi-receipt"></i> Extrato</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+                accountList.insertAdjacentHTML('beforeend', cardHTML);
+            });
+        } catch (error) {
+            console.error('Erro ao carregar contas:', error);
+            showNotification('Não foi possível carregar as contas. Verifique o servidor.', 'danger');
+        }
+    }
+
+    /**
+     * Busca os detalhes da conta e exibe no modal Extrato.
+     * @param {number} numeroConta O número da conta para buscar.
+     */
+    async function emitirExtrato(numeroConta) {
+        try {
+            // Usa o endpoint GET existente para obter os dados da conta
+            const response = await fetch(`${API_BASE_URL}/contas/${numeroConta}`);
+            if (response.status === 404) {
+                 showNotification(`Conta ${numeroConta} não encontrada.`, 'danger');
+                 return;
+            }
+            if (!response.ok) throw new Error('Falha ao buscar extrato.');
+
+            const conta = await response.json();
+            const modalTitle = document.getElementById('extratoModalTitle');
+            const modalBody = document.getElementById('extratoModalBody');
+
+            // Renderiza os dados da conta no corpo do modal
+            modalTitle.textContent = `Extrato da Conta Nº ${conta.numero}`;
+            modalBody.innerHTML = `
+                <div class="card bg-light mb-3">
+                    <div class="card-body">
+                        <h5 class="card-title">${conta.titular.nome}</h5>
+                        <p class="card-text"><strong>CPF:</strong> ${conta.titular.cpf}</p>
+                        <p class="card-text"><strong>Agência:</strong> ${conta.agencia}</p>
+                        <h4 class="text-success mt-3">Saldo Atual: R$ ${conta.saldo.toFixed(2)}</h4>
+                        <hr>
+                        <p class="text-muted">
+                    </p>
+                    </div>
+                </div>
+            `;
+
+            extratoModal.show();
+        } catch (error) {
+            console.error('Erro ao emitir extrato:', error);
+            showNotification('Não foi possível emitir o extrato. Verifique o servidor.', 'danger');
+        }
+    }
+
+
+    /**
+     * Lida com a submissão do formulário de criação de conta.
+     */
+    document.getElementById('form-criar-conta').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const nome = document.getElementById('input-nome-cliente').value;
+        const cpf = document.getElementById('input-cpf-cliente').value;
+
+        try {
+            const response = await fetch(`${API_BASE_URL}/contas`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ nome, cpf })
+            });
+
+            if (response.ok) {
+                showNotification('Conta criada com sucesso!');
+                document.getElementById('form-criar-conta').reset();
+                carregarContas();
+            } else {
+                throw new Error('Falha na resposta do servidor.');
+            }
+        } catch (error) {
+            console.error('Erro ao criar conta:', error);
+            showNotification('Não foi possível criar a conta.', 'danger');
+        }
+    });
+
+    /**
+     * Prepara e exibe o modal de operação (depósito, saque, transferência).
+     */
+    operationModalEl.addEventListener('show.bs.modal', (event) => {
+        const button = event.relatedTarget;
+        const operation = button.getAttribute('data-operation');
+        const accountNumber = button.getAttribute('data-account-number');
+
+        const title = document.getElementById('operationModalTitle');
+        const fields = document.getElementById('operation-fields');
+        const accountNumberInput = document.getElementById('operation-account-number');
+
+        accountNumberInput.value = accountNumber;
+        fields.innerHTML = ''; // Limpa campos anteriores
+
+        if (operation === 'deposito') {
+            title.textContent = `Depositar na Conta Nº ${accountNumber}`;
+            fields.innerHTML = `
+                <div class="mb-3">
+                    <label for="operation-value" class="form-label">Valor do Depósito</label>
+                    <input type="number" class="form-control" id="operation-value" placeholder="Digite o valor aqui" required>
+                </div>`;
+        } else if (operation === 'saque') {
+            title.textContent = `Sacar da Conta Nº ${accountNumber}`;
+            fields.innerHTML = `
+                <div class="mb-3">
+                    <label for="operation-value" class="form-label">Valor do Saque</label>
+                    <input type="number" class="form-control" id="operation-value" placeholder="Digite o valor aqui" required>
+                </div>`;
+        } else if (operation === 'transferencia') {
+            title.textContent = `Transferir da Conta Nº ${accountNumber}`;
+            fields.innerHTML = `
+                <div class="mb-3">
+                    <label for="operation-destination" class="form-label">Conta de Destino</label>
+                    <input type="number" class="form-control" id="operation-destination" placeholder="Digite o número da conta" required>
+                </div>
+                <div class="mb-3">
+                    <label for="operation-value" class="form-label">Valor da Transferência</label>
+                    <input type="number" class="form-control" id="operation-value" placeholder="Digite o valor aqui" required>
+                </div>`;
+        }
+
+        // Atribui a função correta ao botão de confirmação
+        document.getElementById('btn-confirm-operation').onclick = () => handleOperationConfirm(operation);
+    });
+
+    /**
+     * Lida com a confirmação da operação no modal.
+     */
+    async function handleOperationConfirm(operation) {
+        const accountNumber = document.getElementById('operation-account-number').value;
+        const valor = document.getElementById('operation-value')?.value;
+        let url = '', body = {};
+
+        try {
+            if (operation === 'deposito' || operation === 'saque') {
+                if(!valor) return showNotification('O valor é obrigatório.', 'danger');
+                url = `${API_BASE_URL}/contas/${accountNumber}/${operation}`;
+                body = { valor: parseFloat(valor) };
+            } else if (operation === 'transferencia') {
+                const numeroDestino = document.getElementById('operation-destination').value;
+                if(!valor || !numeroDestino) return showNotification('Todos os campos são obrigatórios.', 'danger');
+                url = `${API_BASE_URL}/contas/${accountNumber}/transferencia`;
+                body = { valor: parseFloat(valor), numeroDestino: parseInt(numeroDestino) };
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+
+            const resultMessage = await response.text();
+
+            if (response.ok) {
+                showNotification(resultMessage, 'success');
+                carregarContas();
+            } else {
+                throw new Error(resultMessage);
+            }
+        } catch (error) {
+            console.error(`Erro na operação de ${operation}:`, error);
+            showNotification(error.message, 'danger');
+        } finally {
+            operationModal.hide();
+        }
+    }
+
+    // Carrega as contas ao iniciar a página
+    document.addEventListener('DOMContentLoaded', carregarContas);
+
+    // --- FIM DO CÓDIGO JAVASCRIPT ---
+</script>
+</body>
+</html>
